@@ -112,15 +112,18 @@
         (asserts! (>= (- current-time (get last-action user-data)) (get cooldown action)) (err ERR-COOLING-PERIOD))
         
         (if (get requires-validation action)
-            (ok (map-set pending-actions
-                {action-id: action-id, user: sender}
-                {
-                    timestamp: current-time,
-                    proof: proof,
-                    validators: (list),
-                    is-validated: false
-                }
-            ))
+            (begin 
+                (map-set pending-actions
+                    {action-id: action-id, user: sender}
+                    {
+                        timestamp: current-time,
+                        proof: proof,
+                        validators: (list),
+                        is-validated: false
+                    }
+                )
+                (ok u0) ;; Return 0 points for pending validation
+            )
             (update-score sender (get base-points action))
         )
     )
@@ -151,29 +154,30 @@
         (pending-action (unwrap-panic (map-get? pending-actions {action-id: action-id, user: user})))
         (action (unwrap-panic (map-get? action-types {action-id: action-id})))
         (validator-data (unwrap-panic (map-get? validators sender)))
+        (updated-validators (unwrap-panic (as-max-len? (append (get validators pending-action) sender) u10)))
     )
         (asserts! (get is-active validator-data) (err ERR-UNAUTHORIZED))
         (asserts! (not (get is-validated pending-action)) (err ERR-ALREADY-VERIFIED))
         
         (if (>= (len (get validators pending-action)) u3)
             (begin
-                (try! (update-score user (get base-points action)))
-                (map-set pending-actions
+                (unwrap-panic (update-score user (get base-points action)))
+                (ok (map-set pending-actions
                     {action-id: action-id, user: user}
                     {
                         timestamp: (get timestamp pending-action),
                         proof: (get proof pending-action),
-                        validators: (unwrap-panic (as-max-len? (append (get validators pending-action) sender) u10)),
+                        validators: updated-validators,
                         is-validated: true
                     }
-                )
+                ))
             )
             (ok (map-set pending-actions
                 {action-id: action-id, user: user}
                 {
                     timestamp: (get timestamp pending-action),
                     proof: (get proof pending-action),
-                    validators: (unwrap-panic (as-max-len? (append (get validators pending-action) sender) u10)),
+                    validators: updated-validators,
                     is-validated: false
                 }
             ))
